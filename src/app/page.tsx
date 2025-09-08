@@ -15,9 +15,12 @@ const getTodo = async (id: number): Promise<unknown> => {
 };
 
 const getTodos = async (ids: number[]) => {
+  const chunkSize = 5;
   const todos: unknown[] = [];
-  for (const id of ids) {
-    todos.push(await getTodo(id));
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    const chunkTodos = await Promise.all(chunk.map(getTodo));
+    todos.push(...chunkTodos);
   }
   return todos;
 };
@@ -27,7 +30,7 @@ export default function Home() {
 
   useEffect(() => {
     async function main() {
-      const list = (await getTodos([1, 2, 3, 4, 5])) as Todo[];
+      const list = (await getTodos([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])) as Todo[];
       setTodos(list);
       for (const todo of list) {
         console.log(`Got a todo: ${JSON.stringify(todo)}`);
