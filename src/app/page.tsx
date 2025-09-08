@@ -2,6 +2,26 @@
 
 import { useEffect, useState } from "react";
 
+const wait = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+const callWithRetry = async (
+  fn: () => Promise<unknown>,
+  opt?: { limit?: number; cap?: number; base?: number; exp?: number },
+  depth = 0,
+): Promise<unknown> => {
+  try {
+    return await fn();
+  } catch (error) {
+    if (depth > (opt?.limit ?? 10)) {
+      throw error;
+    }
+    await wait(
+      Math.min((opt?.base ?? 2) ** depth * (opt?.exp ?? 10), opt?.cap ?? 2000),
+    );
+    return callWithRetry(fn, opt, depth + 1);
+  }
+};
+
 type Todo = {
   userId: number;
   id: number;
@@ -13,10 +33,16 @@ const getTodo = async (
   id: number,
   opt?: { signal?: AbortSignal },
 ): Promise<unknown> => {
-  const res = await fetch(`https://jsonplaceholder.typicode.com/todos/${id}`, {
-    signal: opt?.signal,
-  });
-  return await res.json();
+  return callWithRetry(
+    async () => {
+      const res = await fetch(
+        `https://jsonplaceholder.typicode.com/todos/${id}`,
+        { signal: opt?.signal },
+      );
+      return await res.json();
+    },
+    { limit: 10, cap: 2000, base: 2, exp: 10 },
+  );
 };
 
 const getTodos = (
