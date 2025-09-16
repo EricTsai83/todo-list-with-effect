@@ -12,17 +12,20 @@ const wait = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
 const callWithRetry = async (
   fn: () => Promise<unknown>,
-  opt?: { limit?: number; cap?: number; base?: number; exp?: number },
+  opt?: { limit?: number; cap?: number; base?: number; unitMs?: number },
   depth = 0,
 ): Promise<unknown> => {
   try {
     return await fn();
   } catch (error) {
-    if (depth > (opt?.limit ?? 10)) {
+    if (depth >= (opt?.limit ?? 10)) {
       throw error;
     }
     await wait(
-      Math.min((opt?.base ?? 2) ** depth * (opt?.exp ?? 10), opt?.cap ?? 2000),
+      Math.min(
+        (opt?.base ?? 2) ** depth * (opt?.unitMs ?? 10),
+        opt?.cap ?? 2000,
+      ),
     );
     return callWithRetry(fn, opt, depth + 1);
   }
@@ -47,7 +50,7 @@ const getTodo = async (
       );
       return await res.json();
     },
-    { limit: 10, cap: 2000, base: 2, exp: 10 },
+    { limit: 10, cap: 2000, base: 2, unitMs: 10 },
   );
 };
 
@@ -55,7 +58,7 @@ const getTodos = (
   ids: number[],
   opt?: { limit?: number; signal?: AbortSignal; logger?: Logger },
 ) => {
-  const logger = opt?.logger ?? createLogger({ level: "info" });
+  const log = opt?.logger ?? createLogger({ level: "info" });
   const limit = opt?.limit ?? 5;
   const controller = new AbortController();
   const remaining = ids
@@ -66,15 +69,15 @@ const getTodos = (
 
   if (opt?.signal) {
     opt.signal.addEventListener("abort", () => {
-      logger.warn("getTodos aborted by caller");
+      log.warn("getTodos aborted by caller");
       controller.abort();
     });
   }
 
   return new Promise<unknown[]>((resolve, reject) => {
-    const stopTimer = logger.timer("getTodos", { total: ids.length, limit });
+    const stopTimer = log.timer("getTodos", { total: ids.length, limit });
     let pending = 0;
-    logger.info("getTodos start", { remaining: remaining.length });
+    log.info("getTodos start", { remaining: remaining.length });
 
     for (let i = 0; i < limit; i++) {
       fetchRemaining();
@@ -84,7 +87,7 @@ const getTodos = (
       if (remaining.length > 0) {
         const [idToFetch, originalIndex] = remaining.pop()!;
         pending++;
-        logger.info("fetch todo", { id: idToFetch, pending });
+        log.info("fetch todo", { id: idToFetch, pending });
 
         getTodo(idToFetch, { signal: controller.signal })
           .then((res) => {
@@ -93,7 +96,7 @@ const getTodos = (
             fetchRemaining();
           })
           .catch((error) => {
-            logger.error("fetch todo failed", error, { id: idToFetch });
+            log.error("fetch todo failed", error, { id: idToFetch });
             controller.abort();
             stopTimer(false, error, {
               fetched: results.filter((x) => x != null).length,
@@ -101,7 +104,7 @@ const getTodos = (
             return reject(error);
           });
       } else if (pending === 0) {
-        logger.info("getTodos completed", { count: results.length });
+        log.info("getTodos completed", { count: results.length });
         stopTimer(true, undefined, { count: results.length });
         resolve(results);
       }
